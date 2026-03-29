@@ -1,107 +1,72 @@
---// SeHub V3 - Stealth Minimalist (Ultimate PC Edition)
---// Focus: Undetected, Humanized, & Live Update
---// Keybind: J | Command: .refresh & .rejoin
+--// SeHub V3 - Minimalist Original Edition
+--// Focus: Original Structure, Auto-Save Waypoints, Stealth Logic
+--// Keybind: J | Command: .refresh
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
-local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 
 local lp = Players.LocalPlayer
 local mouse = lp:GetMouse()
 local cam = workspace.CurrentCamera
 
---// [PENTING] Ganti link di bawah dengan link RAW GitHub milik lu!
-local SCRIPT_URL = "https://raw.githubusercontent.com/UsernameLu/RepoLu/main/script.lua"
+--// CONFIG & FILE SYSTEM
+local WP_FILE = "SeHub_Waypoints.json"
+local SCRIPT_URL = "https://raw.githubusercontent.com/Username/Repo/main/script.lua"
+local savedWaypoints = {}
 
---// Cleanup System (Agar script tidak menumpuk saat di-refresh)
-if _G.SeHubConnection then _G.SeHubConnection:Disconnect() end
-if lp.PlayerGui:FindFirstChild("SeHubStealth") then lp.PlayerGui.SeHubStealth:Destroy() end
-
---========================
--- STEALTH SETTINGS
---========================
-local settings = {
-    aimbot = false,
-    noclip = false,
-    infJump = false,
-    antiAFK = false,
-    autoRejoin = false,
-    fov = 100,
-    smoothing = 0.15, -- Pergerakan halus agar tidak terdeteksi sistem
-}
-
---========================
--- LIVE UPDATE & COMMANDS (.)
---========================
-lp.Chatted:Connect(function(msg)
-    if msg:lower() == ".refresh" then
-        print("[SeHub] Downloading latest version...")
-        if lp.PlayerGui:FindFirstChild("SeHubStealth") then lp.PlayerGui.SeHubStealth:Destroy() end
-        pcall(function() loadstring(game:HttpGet(SCRIPT_URL))() end)
-    elseif msg:lower() == ".rejoin" then
-        TeleportService:Teleport(game.PlaceId, lp)
+local function SaveWaypoints()
+    if writefile then
+        local data = {}
+        for _, wp in pairs(savedWaypoints) do
+            table.insert(data, {Name = wp.Name, CFArray = {wp.CFrame:GetComponents()}})
+        end
+        pcall(function() writefile(WP_FILE, HttpService:JSONEncode(data)) end)
     end
-end)
+end
+
+local function LoadWaypoints()
+    if isfile and isfile(WP_FILE) then
+        local s, r = pcall(function() return HttpService:JSONDecode(readfile(WP_FILE)) end)
+        if s then 
+            for _, v in pairs(r) do
+                table.insert(savedWaypoints, {Name = v.Name, CFrame = CFrame.new(unpack(v.CFArray))})
+            end
+        end
+    end
+end
+LoadWaypoints()
+
+--// CLEANUP
+if _G.SeHubConnection then _G.SeHubConnection:Disconnect() end
+if lp.PlayerGui:FindFirstChild("SeHubV3") then lp.PlayerGui.SeHubV3:Destroy() end
+
+--// SETTINGS
+local settings = {
+    aimbot = false, noclip = false, infJump = false, 
+    antiAFK = false, smoothing = 0.15, fov = 100
+}
 
 --========================
 -- CORE LOGIC (STEALTH)
 --========================
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 1
-FOVCircle.Radius = settings.fov
-FOVCircle.Visible = false
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Transparency = 0.2
-
--- Auto Rejoin Logic
-CoreGui.RobloxPromptGui.promptOverlay.ChildAdded:Connect(function(child)
-    if settings.autoRejoin and child.Name == "ErrorPrompt" then
-        TeleportService:Teleport(game.PlaceId, lp)
-    end
-end)
-
--- Anti AFK Logic (Simulasi rotasi kamera tipis)
-task.spawn(function()
-    while task.wait(60) do
-        if settings.antiAFK then
-            cam.CFrame = cam.CFrame * CFrame.Angles(0, math.rad(0.01), 0)
-            task.wait(0.1)
-            cam.CFrame = cam.CFrame * CFrame.Angles(0, math.rad(-0.01), 0)
-        end
-    end
-end)
-
--- Aimbot Target Finder
-local function getTarget()
-    local target = nil
-    local dist = settings.fov
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= lp and v.Character and v.Character:FindFirstChild("Head") and v.Character.Humanoid.Health > 0 then
-            local pos, onScreen = cam:WorldToViewportPoint(v.Character.Head.Position)
-            if onScreen then
-                local mDist = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(pos.X, pos.Y)).Magnitude
-                if mDist < dist then target = v.Character.Head dist = mDist end
+_G.SeHubConnection = RunService.RenderStepped:Connect(function()
+    if settings.aimbot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+        local target = nil
+        local dist = settings.fov
+        for _, v in pairs(Players:GetPlayers()) do
+            if v ~= lp and v.Character and v.Character:FindFirstChild("Head") then
+                local pos, onScreen = cam:WorldToViewportPoint(v.Character.Head.Position)
+                if onScreen then
+                    local mDist = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(pos.X, pos.Y)).Magnitude
+                    if mDist < dist then target = v.Character.Head dist = mDist end
+                end
             end
         end
+        if target then cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, target.Position), settings.smoothing) end
     end
-    return target
-end
-
--- Render Loop
-_G.SeHubConnection = RunService.RenderStepped:Connect(function()
-    FOVCircle.Position = Vector2.new(mouse.X, mouse.Y + 36)
-    
-    -- Humanized Aim (Pake Lerp biar gak snap/kaku)
-    if settings.aimbot and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-        local target = getTarget()
-        if target then
-            cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, target.Position), settings.smoothing)
-        end
-    end
-
-    -- Stealth Noclip
     if settings.noclip and lp.Character then
         for _, part in pairs(lp.Character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
@@ -109,7 +74,6 @@ _G.SeHubConnection = RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Safe Infinite Jump
 UserInputService.JumpRequest:Connect(function()
     if settings.infJump and lp.Character and lp.Character:FindFirstChild("Humanoid") then
         lp.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
@@ -117,65 +81,126 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 --========================
--- MINIMALIST UI BUILDER
+-- UI BUILDER (ORIGINAL LAYOUT)
 --========================
 local gui = Instance.new("ScreenGui", lp.PlayerGui)
-gui.Name = "SeHubStealth"
+gui.Name = "SeHubV3"
 gui.IgnoreGuiInset = true
 
 local window = Instance.new("Frame", gui)
-window.Size = UDim2.fromOffset(350, 300)
+window.Size = UDim2.fromOffset(500, 320)
 window.Position = UDim2.fromScale(0.5, 0.5)
 window.AnchorPoint = Vector2.new(0.5, 0.5)
-window.BackgroundColor3 = Color3.fromRGB(5, 5, 5) -- Hitam pekat
+window.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 window.BackgroundTransparency = 0.15
-window.BorderSizePixel = 0
+Instance.new("UIStroke", window).Color = Color3.fromRGB(255, 255, 255)
 
-local stroke = Instance.new("UIStroke", window)
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Thickness = 1
-stroke.Transparency = 0.9
+-- Sidebar
+local sidebar = Instance.new("Frame", window)
+sidebar.Size = UDim2.new(0, 120, 1, 0)
+sidebar.BackgroundTransparency = 1
+local sLayout = Instance.new("UIListLayout", sidebar)
+sLayout.Padding = UDim.new(0, 2)
 
-local layout = Instance.new("UIListLayout", window)
-layout.Padding = UDim.new(0, 2)
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+-- Content Area
+local mainContent = Instance.new("Frame", window)
+mainContent.Position = UDim2.fromOffset(125, 10)
+mainContent.Size = UDim2.new(1, -135, 1, -20)
+mainContent.BackgroundTransparency = 1
 
-local title = Instance.new("TextLabel", window)
-title.Text = "SYSTEM // STEALTH_OS_V3"
-title.Size = UDim2.new(1, 0, 0, 40)
-title.Font = Enum.Font.Code
-title.TextColor3 = Color3.fromRGB(200, 200, 200)
-title.BackgroundTransparency = 1
-
-local function addToggle(text, key)
-    local btn = Instance.new("TextButton", window)
-    btn.Text = "> " .. text .. ": OFF"
-    btn.Size = UDim2.new(0.9, 0, 0, 30)
+-- UI Helpers
+local function createTabBtn(name, page)
+    local btn = Instance.new("TextButton", sidebar)
+    btn.Text = "[ " .. name .. " ]"
+    btn.Size = UDim2.new(1, 0, 0, 30)
     btn.Font = Enum.Font.Code
-    btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
     btn.BackgroundTransparency = 1
-    btn.TextXAlignment = Enum.TextXAlignment.Left
     
     btn.MouseButton1Click:Connect(function()
-        settings[key] = not settings[key]
-        btn.Text = settings[key] and "> " .. text .. ": ON" or "> " .. text .. ": OFF"
-        btn.TextColor3 = settings[key] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
-        if key == "aimbot" then FOVCircle.Visible = settings[key] end
+        for _, v in pairs(mainContent:GetChildren()) do if v:IsA("ScrollingFrame") then v.Visible = false end end
+        page.Visible = true
     end)
 end
 
--- List Fitur
-addToggle("HUMAN_AIMBOT", "aimbot")
-addToggle("STEALTH_NOCLIP", "noclip")
-addToggle("INFINITE_JUMP", "infJump")
-addToggle("ANTI_AFK_MODE", "antiAFK")
-addToggle("AUTO_REJOIN", "autoRejoin")
+local function createPage()
+    local p = Instance.new("ScrollingFrame", mainContent)
+    p.Size = UDim2.fromScale(1, 1)
+    p.BackgroundTransparency = 1
+    p.CanvasSize = UDim2.new(0,0,0,0)
+    p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    p.ScrollBarThickness = 2
+    p.Visible = false
+    Instance.new("UIListLayout", p).Padding = UDim.new(0, 5)
+    return p
+end
 
--- Dragging & Toggle J
+--========================
+-- TABS & FEATURES
+--========================
+local pCombat = createPage()
+local pWaypoints = createPage()
+
+createTabBtn("COMBAT", pCombat)
+createTabBtn("WAYPOINTS", pWaypoints)
+
+-- Combat Features
+local function addToggle(parent, text, key)
+    local b = Instance.new("TextButton", parent)
+    b.Text = "> " .. text .. ": OFF"
+    b.Size = UDim2.new(1, 0, 0, 25)
+    b.Font = Enum.Font.Code
+    b.TextColor3 = Color3.fromRGB(150, 150, 150)
+    b.BackgroundTransparency = 1
+    b.TextXAlignment = Enum.TextXAlignment.Left
+    b.MouseButton1Click:Connect(function()
+        settings[key] = not settings[key]
+        b.Text = settings[key] and "> " .. text .. ": ON" or "> " .. text .. ": OFF"
+        b.TextColor3 = settings[key] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
+    end)
+end
+
+addToggle(pCombat, "SMOOTH_AIM", "aimbot")
+addToggle(pCombat, "NOCLIP", "noclip")
+addToggle(pCombat, "INF_JUMP", "infJump")
+
+-- Waypoint Logic (Original Style)
+local wpInput = Instance.new("TextBox", pWaypoints)
+wpInput.Size = UDim2.new(1, 0, 0, 30)
+wpInput.PlaceholderText = "Waypoint Name..."
+wpInput.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+wpInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+wpInput.Font = Enum.Font.Code
+
+local addWp = Instance.new("TextButton", pWaypoints)
+addWp.Text = "[ + SAVE LOCATION ]"
+addWp.Size = UDim2.new(1, 0, 0, 30)
+addWp.TextColor3 = Color3.fromRGB(0, 255, 100)
+addWp.BackgroundTransparency = 1
+addWp.Font = Enum.Font.Code
+
+addWp.MouseButton1Click:Connect(function()
+    if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+        local name = wpInput.Text ~= "" and wpInput.Text or "Point " .. (#savedWaypoints + 1)
+        table.insert(savedWaypoints, {Name = name, CFrame = lp.Character.HumanoidRootPart.CFrame})
+        SaveWaypoints()
+        wpInput.Text = ""
+        -- Anda bisa menambahkan logika refresh list di sini
+    end
+end)
+
+--========================
+-- COMMANDS & DRAG
+--========================
+lp.Chatted:Connect(function(msg)
+    if msg == ".refresh" then pcall(function() loadstring(game:HttpGet(SCRIPT_URL))() end) end
+end)
+
 local dragging, dragStart, startPos
 window.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true dragStart = i.Position startPos = window.Position end end)
-UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then local delta = i.Position - dragStart window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
+UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then local d = i.Position - dragStart window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y) end end)
 UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
 UserInputService.InputBegan:Connect(function(i, gp) if not gp and i.KeyCode == Enum.KeyCode.J then window.Visible = not window.Visible end end)
 
-print("SeHub V3 Loaded. Commands: .refresh | .rejoin")
+pCombat.Visible = true
+print("SeHub V3 Loaded. Prefix: [.]")
